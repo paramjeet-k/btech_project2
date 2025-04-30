@@ -3,39 +3,33 @@ import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
 
-# — Page config —
+# --- Page Config ---
 st.set_page_config(page_title="UCS Predictor", layout="wide")
 
 st.title("📊 UCS Prediction for Composite Mixes")
-st.markdown("Upload your mix dataset (Excel or CSV), then predict UCS by manual input or by sample ID.")
+st.markdown("This app loads a predefined CSV (`Book3.csv`) and predicts UCS by manual input or by sample ID.")
 
-# — File uploader (CSV or XLSX) —
-uploaded = st.sidebar.file_uploader(
-    "Upload your data (CSV or Excel)", type=["csv", "xlsx"]
-)
-if not uploaded:
-    st.info("Waiting for you to upload a file…")
-    st.stop()
+# --- Load dataset from local CSV ---
+@st.cache_data
+def load_data():
+    try:
+        df = pd.read_csv('Book3.csv')
+    except FileNotFoundError:
+        st.error("`Book3.csv` not found. Please ensure the file is in the app directory.")
+        st.stop()
+    return df
 
-# — Read data —
-try:
-    if uploaded.name.endswith(".csv"):
-        df = pd.read_csv(uploaded)
-    else:
-        df = pd.read_excel(uploaded)
-except Exception as e:
-    st.error(f"Error reading file: {e}")
-    st.stop()
+df = load_data()
 
-# — Validate columns —
+# --- Validate columns ---
 required = ['MIX S. NO','Quartz (%)','Barite (%)','Detergent (%)',
             'Gypsum (%)','Cement (%)','Water (%)','UCS(Mpa)']
 missing = [c for c in required if c not in df.columns]
 if missing:
-    st.error(f"Missing columns: {missing}")
+    st.error(f"Missing columns in Book3.csv: {missing}")
     st.stop()
 
-# — Fit exponential model —
+# --- Fit exponential model ---
 X = df[['Quartz (%)','Barite (%)','Detergent (%)','Gypsum (%)','Cement (%)','Water (%)']] / 100.0
 y = df['UCS(Mpa)'].astype(float)
 ln_y = np.log(y)
@@ -44,15 +38,15 @@ intercept_ln = model.intercept_
 coeffs = dict(zip(X.columns, model.coef_))
 A = np.exp(intercept_ln)
 
-# — Show fitted equation —
-eq = "UCS = {:.3e} * exp({})".format(
-    A,
-    " + ".join(f"{coeffs[c]:.4f}·{c}/100" for c in X.columns)
+# --- Show fitted equation ---
+eq = (
+    f"UCS = {A:.3e} * exp(" +
+    " + ".join(f"{coeffs[c]:.4f}·{c}/100" for c in X.columns) + ")"
 )
 st.subheader("🔍 Fitted Transcendental Model")
 st.code(eq)
 
-# — Prediction mode —
+# --- Prediction mode ---
 mode = st.sidebar.radio("Prediction Mode", ["Manual Input", "By Sample ID"])
 
 if mode == "Manual Input":
@@ -74,11 +68,11 @@ else:  # By Sample ID
     row = df[df['MIX S. NO'] == sid].iloc[0]
     exp_val = sum(coeffs[c]*row[c] for c in X.columns)
     ucs_pred = A * np.exp(exp_val)
-    st.subheader(f"📋 Sample {sid}: Actual vs Predicted")
+    st.subheader(f"📋 Sample {sid}: Actual vs Predicted UCS")
     st.write(f"- Actual UCS:    **{row['UCS(Mpa)']:.4f} MPa**")
     st.write(f"- Predicted UCS: **{ucs_pred:.4f} MPa**")
 
-# — Optional: show data —
+# --- Optional: show raw data ---
 if st.sidebar.checkbox("Show raw data"):
     st.subheader("Raw Dataset")
     st.dataframe(df)
